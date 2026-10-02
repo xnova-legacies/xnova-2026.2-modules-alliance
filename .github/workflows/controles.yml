@@ -17,9 +17,14 @@
 # identifiants restent dans `configs/.env.example` du Cœur, que ce travail copie.
 #
 # Deux références du Coeur sont éprouvées, comme les essais PHP du Coeur :
-#   - `develop`          : son **travail en cours**, où la casse arrive en premier, **sans
-#     bloquer** (le Coeur bouge, ce n'est pas la faute du module) ;
-#   - la version publiée : ce qui part réellement, **bloquant**.
+#   - `develop` : son **travail en cours**, où la casse arrive en premier, **sans bloquer**
+#     (le Coeur bouge, ce n'est pas la faute du module) ;
+#   - `master`  : la branche qui publie, dont la prochaine étiquette sortira, **bloquant**.
+#
+# `master` plutôt que la dernière étiquette : un correctif du Coeur dont le module a besoin
+# n'existe dans aucune étiquette avant la version suivante, et la garde resterait rouge pour
+# une raison qui n'appartient pas au module. Le jour où une étiquette devra être épinglée à
+# la place, c'est cette valeur de `ref` qu'il faudra changer.
 name: Contrôles du module
 
 on:
@@ -54,7 +59,7 @@ jobs:
     name: Contrôles (${{ matrix.coeur.ref }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Un échec contre `develop` est une information ; contre la version publiée, une panne.
+    # Un échec contre `develop` est une information ; contre `master`, une panne.
     continue-on-error: ${{ matrix.coeur.bloquant == false }}
     strategy:
       fail-fast: false
@@ -63,8 +68,8 @@ jobs:
           # Le travail en cours du Coeur : c'est là que la casse arrive en premier.
           - ref: develop
             bloquant: false
-          # À faire avancer avec la dernière étiquette du Coeur.
-          - ref: v1.0.1
+          # La branche qui publie : ce qui partira à la prochaine étiquette.
+          - ref: master
             bloquant: true
 
     # Le MySQL 5.7 de la pile du Cœur fait le travail : même image que la production, mêmes
@@ -165,8 +170,8 @@ jobs:
 
       # Le seul contrôle qui voit le **résultat** : l'univers de démonstration se garnit
       # (migrations du Coeur **et** du module rejouées, registres semés) et les pages
-      # répondent avec l'alliance installée. Réservé à la version publiée : c'est elle qui
-      # part réellement, et c'est le contrôle le plus long.
+      # répondent avec l'alliance installée. Réservé à `master` : c'est la branche qui
+      # publie, et c'est le contrôle le plus long.
       - name: Base neuve et univers de démonstration
         if: ${{ matrix.coeur.bloquant }}
         run: docker compose exec -T app php db/demo.php --force

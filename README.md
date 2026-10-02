@@ -98,7 +98,7 @@ poussée : il pose le module dans un checkout du **Coeur public**
 (`xnova-legacies/xnova-2026.2`) et lance ses contrôles — les tests du module y sont
 découverts (`phpunit.xml` porte `<directory>modules</directory>`) comme son style
 (`phpcs.xml` porte `<file>modules</file>`). Deux références sont éprouvées : `develop` pour
-voir venir la casse (sans bloquer) et la version publiée du Coeur, qui bloque.
+voir venir la casse (sans bloquer) et `master`, la branche qui publie, dont un échec bloque.
 
 ## 🗂️ Comment c'est fait
 
