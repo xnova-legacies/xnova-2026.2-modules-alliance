@@ -1,0 +1,174 @@
+# Contrôles du module `alliance`, éprouvé contre le Coeur de l'application.
+#
+# Un module n'est pas un dépôt isolé : il vit dans `modules/alliance/` du Coeur, dont il
+# utilise le routeur, les gabarits et les règles. Ce workflow le vérifie donc **en place** —
+# il pose le module dans un checkout du Coeur (`xnova-legacies/xnova-2026.2`, dépôt public :
+# aucun secret n'est nécessaire) et lance les contrôles **du Coeur lui-même** :
+#   - `phpunit.xml` porte `<directory>modules</directory>` : les tests du module sont découverts ;
+#   - `phpcs.xml` porte `<file>modules</file>` : son style est contrôlé ;
+#   - le migrateur lit `modules/*/db/migrations/` : son schéma s'applique, et son `down` rejoue ;
+#   - `composer test` fait passer les **gardes du Coeur avec le module installé** : aucune
+#     requête du Coeur ne nomme une colonne de module, surcharges dérivables, verrou des
+#     flottes, schéma d'un module chez lui.
+# Un module bien construit, c'est donc un Coeur qui reste vert avec lui.
+#
+# Les contrôles passent par la **pile du Cœur** (`docker compose`), et non par un `services:`
+# de workflow : c'est ce qui permet de n'écrire **aucune valeur de base** ici. Les
+# identifiants restent dans `configs/.env.example` du Cœur, que ce travail copie.
+#
+# Deux références du Coeur sont éprouvées, comme les essais PHP du Coeur :
+#   - `develop`          : son **travail en cours**, où la casse arrive en premier, **sans
+#     bloquer** (le Coeur bouge, ce n'est pas la faute du module) ;
+#   - la version publiée : ce qui part réellement, **bloquant**.
+name: Contrôles du module
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Une nouvelle poussée sur la même branche remplace la précédente.
+concurrency:
+  group: module-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# **Aucune valeur de la base n'est écrite ici.** Le Cœur porte les siennes dans
+# `configs/.env.example` (versionné : c'est le modèle que son `deploy.ps1` demande de
+# copier) — `DB_*` pour l'application, `MYSQL_*` pour son service MySQL. Le travail se
+# contente de le copier en `configs/.env.$APP_ENV`, et les deux côtés lisent alors **le même
+# fichier** : ils ne peuvent pas diverger.
+#
+# Pourquoi la pile du Cœur plutôt qu'un `services:` du workflow : un service GitHub ne peut
+# pas lire un fichier du dépôt, il faudrait donc y recopier les identifiants — c'est ce que
+# le Cœur lui-même fait, contraint. Ici, la pile lit son propre fichier, et il n'y a rien à
+# tenir à jour.
+env:
+  # Quelle pile, donc quel fichier (`configs/.env.ci`). Ce n'est pas un secret, c'est un nom.
+  APP_ENV: ci
+
+jobs:
+  controles:
+    name: Contrôles (${{ matrix.coeur.ref }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Un échec contre `develop` est une information ; contre la version publiée, une panne.
+    continue-on-error: ${{ matrix.coeur.bloquant == false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        coeur:
+          # Le travail en cours du Coeur : c'est là que la casse arrive en premier.
+          - ref: develop
+            bloquant: false
+          # À faire avancer avec la dernière étiquette du Coeur.
+          - ref: v1.0.1
+            bloquant: true
+
+    # Le MySQL 5.7 de la pile du Cœur fait le travail : même image que la production, mêmes
+    # identifiants que le fichier d'environnement, et le schéma InnoDB/utf8mb3 avec.
+    steps:
+      # Le Coeur **d'abord** : un checkout nettoie son arbre, et il effacerait un dossier
+      # déjà copié.
+      - name: Le Coeur de l'application
+        uses: actions/checkout@v7
+        with:
+          repository: xnova-legacies/xnova-2026.2
+          ref: ${{ matrix.coeur.ref }}
+
+      - name: Le module
+        uses: actions/checkout@v7
+        with:
+          path: module
+
+      # Les fichiers du module à leur place, sans son dépôt : c'est exactement ce que le jeu
+      # trouve dans `modules/alliance/`.
+      - name: Poser le module dans le Coeur
+        run: |
+          rm -rf modules/alliance
+          mkdir -p modules/alliance
+          cp -r module/. modules/alliance/
+          rm -rf modules/alliance/.git modules/alliance/.github
+
+      - name: PHP 8.3 — le plancher du jeu
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql
+          coverage: none
+          tools: composer:v2
+
+      - run: composer install --no-interaction --no-progress --prefer-dist
+
+      # Le `configs/config.php` versionné est **vide** : c'est l'installateur qui l'écrit.
+      # La connexion vient donc du fichier d'environnement — celui du Cœur, copié tel quel.
+      # Les mêmes valeurs servent aux deux : `DB_*` à l'application, `MYSQL_*` au service.
+      - name: Fichier d'environnement, celui du Cœur
+        run: cp configs/.env.example "configs/.env.$APP_ENV"
+
+      # La pile du Cœur : `app` et, par `depends_on`, son `db`. `composer install` vient
+      # d'être fait sur le runner, donc le conteneur voit `vendor/` par le volume — comme en
+      # développement, où les sources sont montées.
+      - name: Monter la pile du Cœur
+        run: docker compose up -d --build app
+
+      # On attend une connexion **réseau** : le contrôle de santé du compose interroge
+      # `localhost`, donc le socket, qui répond pendant l'initialisation de MySQL — assez
+      # pour lancer les migrations trop tôt et se faire refuser la connexion. Le test passe
+      # par le migrateur du Cœur, donc par ses identifiants : rien à réécrire ici.
+      - name: Attendre que MySQL accepte le réseau
+        run: |
+          for _ in $(seq 1 30); do
+            if docker compose exec -T app php db/migrate.php status >/dev/null 2>&1; then
+              echo 'MySQL repond sur le reseau.'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo 'MySQL injoignable apres 60 s.' >&2
+          docker compose logs --no-color db
+          exit 1
+
+      # Les migrations du Coeur **et** celles du module. Le `rollback` n'est pas une
+      # politesse : un `down` qui ne rejoue pas est une fausse sécurité — et c'est la seule
+      # occasion de l'essayer avant la production.
+      - name: Schéma — Coeur et module, puis rejeu
+        run: |
+          docker compose exec -T app php db/migrate.php migrate
+          docker compose exec -T app php db/migrate.php rollback 100 --force
+          docker compose exec -T app php db/migrate.php migrate
+
+      # Le registre que le jeu interroge (« quel module répond à ce point de surcharge ») se
+      # sème depuis les manifestes de `modules/` : c'est lui qui valide le manifeste.
+      - name: Registre des modules
+        run: docker compose exec -T app php db/modules.php
+
+      - name: Style — `composer cs`
+        run: composer cs
+
+      - name: Une règle, une implémentation — `composer doublons`
+        run: composer doublons
+
+      - name: Requêtes SQL — `composer sql`
+        run: composer sql -- . --strict
+
+      - name: Tests — `composer test`
+        run: composer test
+
+      # Le seul contrôle qui voit le **résultat** : l'univers de démonstration se garnit
+      # (migrations du Coeur **et** du module rejouées, registres semés) et les pages
+      # répondent avec l'alliance installée. Réservé à la version publiée : c'est elle qui
+      # part réellement, et c'est le contrôle le plus long.
+      - name: Base neuve et univers de démonstration
+        if: ${{ matrix.coeur.bloquant }}
+        run: docker compose exec -T app php db/demo.php --force
+
+      - name: Fumée (`tools/smoke.sh`)
+        if: ${{ matrix.coeur.bloquant }}
+        run: sh tools/smoke.sh http://localhost:8080
+
+      - name: Journaux du conteneur (si quelque chose a échoué)
+        if: failure()
+        run: docker compose logs --no-color app

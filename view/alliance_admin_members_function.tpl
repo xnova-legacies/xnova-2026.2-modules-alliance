@@ -1,0 +1,2 @@
+<a class="btn btn-sm btn-outline-danger" href="/game/alliance?mode=admin&amp;edit=members&amp;kick={id}" title="{Expel_user}" data-confirm="{You_are_sure_want_kick_to}" onclick="return confirm(this.dataset.confirm);"><i class="bi bi-person-x" aria-hidden="true"></i></a>
+<a class="btn btn-sm btn-outline-secondary" href="/game/alliance?mode=admin&amp;edit=members&amp;rank={id}" title="{Set_range}"><i class="bi bi-key" aria-hidden="true"></i></a>

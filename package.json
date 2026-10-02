@@ -1,0 +1,29 @@
+{
+  "name": "alliance",
+  "label": "mod_alliance",
+  "description": "mod_alliance_desc",
+  "version": "1.0.0",
+  "author": "XNova",
+  "native": true,
+  "order": 70,
+  "page": "/game/alliance",
+  "routes": {
+    "game/alliance": "AllianceController@indexAction",
+    "game/alliance/info": "AllianceController@infoAction"
+  },
+  "api": {
+    "game/api/alliance/make": "AllianceApiController@makeAction",
+    "game/api/alliance/apply": "AllianceApiController@applyAction",
+    "game/api/alliance/circular": "AllianceApiController@circularAction",
+    "game/api/alliance/request": "AllianceApiController@requestAction",
+    "game/api/alliance/rename": "AllianceApiController@renameAction",
+    "game/api/alliance/leave": "AllianceApiController@leaveAction"
+  },
+  "legacy": {
+    "alliance.php": "/game/alliance",
+    "ainfo.php": "/game/alliance/info"
+  },
+  "dependencies": { "core": ">=1.0.1" },
+  "permissions": ["module.alliance"],
+  "settings": {}
+}
