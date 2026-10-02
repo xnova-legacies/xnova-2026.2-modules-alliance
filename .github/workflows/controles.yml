@@ -85,12 +85,18 @@ jobs:
 
       # Les fichiers du module à leur place, sans son dépôt : c'est exactement ce que le jeu
       # trouve dans `modules/alliance/`.
+      #
+      # Le dossier du checkout est **retiré** dans la foulée : sans ce geste, chaque fichier
+      # existe deux fois dans l'arbre, et l'audit des doublons les voit — `module/...` contre
+      # `modules/alliance/...`, au même numéro de ligne. Ce n'est pas le module qui est en
+      # double, c'est la copie qui reste.
       - name: Poser le module dans le Coeur
         run: |
           rm -rf modules/alliance
           mkdir -p modules/alliance
           cp -r module/. modules/alliance/
           rm -rf modules/alliance/.git modules/alliance/.github
+          rm -rf module
 
       - name: PHP 8.3 — le plancher du jeu
         uses: shivammathur/setup-php@v2
